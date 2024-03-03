@@ -8,7 +8,6 @@ import (
 	"github.com/vahan90/skywoker/internal/logger"
 	v1 "k8s.io/api/apps/v1"
 	v2 "k8s.io/api/autoscaling/v2"
-	core "k8s.io/api/core/v1"
 	policy "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	vpaApiv1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
@@ -84,6 +83,26 @@ type Workload struct {
 	Cronjob     *Cronjob          `json:"cronjob,omitempty"`
 }
 
+func calculateQos(d v1.Deployment) string {
+	containers := d.Spec.Template.Spec.Containers
+	for _, container := range containers {
+		// Check if either memory or CPU requests or limits are not set
+		if (container.Resources.Requests.Memory().IsZero() || container.Resources.Requests.Cpu().IsZero()) ||
+			(container.Resources.Limits.Memory().IsZero() || container.Resources.Limits.Cpu().IsZero()) {
+			return "Burstable"
+		}
+
+		// Check if both memory and CPU requests and limits are set
+		if !container.Resources.Requests.Memory().IsZero() && !container.Resources.Requests.Cpu().IsZero() &&
+			!container.Resources.Limits.Memory().IsZero() && !container.Resources.Limits.Cpu().IsZero() {
+			return "Guaranteed"
+		}
+	}
+
+	// If no containers match any of the above conditions, return BestEffort
+	return "BestEffort"
+}
+
 func getDeployments(namespace string, clientset *kubernetes.Clientset) (*v1.DeploymentList, error) {
 	deploymentsClient := clientset.AppsV1().Deployments(namespace)
 	list, err := deploymentsClient.List(context.Background(), metav1.ListOptions{})
@@ -94,22 +113,6 @@ func getDeployments(namespace string, clientset *kubernetes.Clientset) (*v1.Depl
 
 	for _, d := range list.Items {
 		logger.Debugf(" * %s (%d replicas)\n", d.Name, *d.Spec.Replicas)
-	}
-
-	return list, err
-}
-
-func getPodsForDeployment(namespace string, clientset *kubernetes.Clientset, matchLabels map[string]string) (*core.PodList, error) {
-	podsClient := clientset.CoreV1().Pods(namespace)
-
-	list, err := podsClient.List(context.Background(), metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: matchLabels})})
-
-	if err != nil {
-		return nil, err
-	}
-
-	for _, d := range list.Items {
-		logger.Debugf(" * %s\n", d.Name)
 	}
 
 	return list, err
@@ -188,18 +191,7 @@ func processDeployment(d v1.Deployment, c *kubernetes.Clientset, v *vpaApi.Clien
 		containers = append(containers, c)
 	}
 
-	pods, err := getPodsForDeployment(d.Namespace, c, d.ObjectMeta.Labels)
-
-	if err != nil {
-		logger.Errorf(err.Error())
-	}
-
-	qos := "0 pods active for this workload"
-
-	if len(pods.Items) > 0 {
-		firstPod := pods.Items[0]
-		qos = string(firstPod.Status.QOSClass)
-	}
+	qos := calculateQos(d)
 
 	pod := Pod{
 		PodLabels:  d.Spec.Template.ObjectMeta.Labels,
