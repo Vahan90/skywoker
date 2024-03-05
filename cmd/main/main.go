@@ -10,6 +10,11 @@ import (
 	"github.com/vahan90/skywoker/internal/scanner"
 )
 
+// bestPractices is a function that checks Kubernetes workloads for best practices
+// It takes a cli.Context as an argument and returns an error
+// It checks the workload type and logs the namespace and workload type
+// It then calls the scanner.ScanCluster function with the namespace and workload type
+// It returns nil
 func bestPractices(c *cli.Context) error {
 	// check value for workload-type, exit if not valid
 	workloadType := strings.ToLower(c.String("workload-type"))
@@ -52,7 +57,7 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:        "workload-type",
-						Usage:       "workload type to check from the following options: all, deployment, statefulset, cronjob.",
+						Usage:       "workload type to check from the following options: all, deployment.",
 						Aliases:     []string{"w"},
 						DefaultText: "all",
 						Value:       "all",

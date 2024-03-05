@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/vahan90/skywoker/internal/logger"
+	"github.com/vahan90/skywoker/internal/reporter"
+	"github.com/vahan90/skywoker/internal/workload"
 	v1 "k8s.io/api/apps/v1"
 	v2 "k8s.io/api/autoscaling/v2"
 	policy "k8s.io/api/policy/v1"
@@ -15,73 +17,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
-
-type Requests struct {
-	Memory string `json:"memory"`
-	CPU    string `json:"cpu"`
-}
-
-type Limits struct {
-	Memory string `json:"memory"`
-	CPU    string `json:"cpu"`
-}
-
-type Resource struct {
-	Requests Requests `json:"requests"`
-	Limits   Limits   `json:"limits"`
-}
-
-type Container struct {
-	Name              string `json:"name"`
-	ReadinessProbeSet bool   `json:"readinessProbeSet"`
-	LivenessProbeSet  bool   `json:"livenessProbeSet"`
-	Resource          `json:"resource"`
-}
-
-type Pod struct {
-	PodLabels  map[string]string `json:"labels"`
-	Containers []Container       `json:"containers"`
-	QoS        string            `json:"qos"`
-}
-
-type Cronjob struct {
-	Schedule                   string `json:"schedule"`
-	ConcurrencyPolicy          string `json:"concurrencyPolicy"`
-	Suspended                  bool   `json:"suspended"`
-	SuccessfulJobsHistoryLimit int32  `json:"successfulJobsHistoryLimit"`
-	FailedJobsHistoryLimit     int32  `json:"failedJobsHistoryLimit"`
-	Parallelism                int32  `json:"parallelism"`
-	Completions                int32  `json:"completions"`
-	RestartPolicy              string `json:"restartPolicy"`
-	BackoffLimit               int32  `json:"backoffLimit"`
-	ActiveDeadlineSeconds      int64  `json:"activeDeadlineSeconds"`
-	Pod                        `json:"pod"`
-}
-
-type Statefulset struct {
-	Replicas int32 `json:"replicas"`
-	HPASet   bool  `json:"hpaSet"`
-	VPASet   bool  `json:"vpaSet"`
-	PDBSet   bool  `json:"pdbSet"`
-	Pod      `json:"pod"`
-}
-
-type Deployment struct {
-	Replicas int32 `json:"replicas"`
-	HPASet   bool  `json:"hpaSet"`
-	VPASet   bool  `json:"vpaSet"`
-	PDBSet   bool  `json:"pdbSet"`
-	Pod      `json:"pod"`
-}
-
-type Workload struct {
-	Name        string            `json:"name"`
-	Type        string            `json:"type"`
-	Labels      map[string]string `json:"labels"`
-	Deployment  *Deployment       `json:"deployment,omitempty"`
-	Statefulset *Statefulset      `json:"statefulset,omitempty"`
-	Cronjob     *Cronjob          `json:"cronjob,omitempty"`
-}
 
 func calculateQos(d v1.Deployment) string {
 	containers := d.Spec.Template.Spec.Containers
@@ -163,13 +98,13 @@ func getVPAs(namespace string, clientset *vpaApi.Clientset) (*vpaApiv1.VerticalP
 	return list, err
 }
 
-func processDeployment(d v1.Deployment, c *kubernetes.Clientset, v *vpaApi.Clientset) {
+func processDeployment(d v1.Deployment, c *kubernetes.Clientset, v *vpaApi.Clientset) workload.Workload {
 	logger.Debugf(" * %s (%d replicas)\n", d.Name, *d.Spec.Replicas)
 
 	// loop to get container information
-	var containers []Container
+	var containers []workload.Container
 	for _, container := range d.Spec.Template.Spec.Containers {
-		var c Container
+		var c workload.Container
 		c.Name = container.Name
 		c.Resource.Requests.Memory = container.Resources.Requests.Memory().String()
 		c.Resource.Requests.CPU = container.Resources.Requests.Cpu().String()
@@ -193,7 +128,7 @@ func processDeployment(d v1.Deployment, c *kubernetes.Clientset, v *vpaApi.Clien
 
 	qos := calculateQos(d)
 
-	pod := Pod{
+	pod := workload.Pod{
 		PodLabels:  d.Spec.Template.ObjectMeta.Labels,
 		Containers: containers,
 		QoS:        qos,
@@ -255,7 +190,7 @@ func processDeployment(d v1.Deployment, c *kubernetes.Clientset, v *vpaApi.Clien
 		vpaSet = true
 	}
 
-	deployment := Deployment{
+	deployment := workload.Deployment{
 		Replicas: *d.Spec.Replicas,
 		HPASet:   hpaSet,
 		VPASet:   vpaSet,
@@ -264,7 +199,7 @@ func processDeployment(d v1.Deployment, c *kubernetes.Clientset, v *vpaApi.Clien
 	}
 
 	// get results
-	results := Workload{
+	results := workload.Workload{
 		Type:       "Deployment",
 		Labels:     d.ObjectMeta.Labels,
 		Name:       d.Name,
@@ -277,6 +212,8 @@ func processDeployment(d v1.Deployment, c *kubernetes.Clientset, v *vpaApi.Clien
 		logger.Warningf("error:", err)
 	}
 	logger.Infof(string(b))
+
+	return results
 }
 
 func ScanCluster(namespace string, workloadType string) {
@@ -306,7 +243,8 @@ func ScanCluster(namespace string, workloadType string) {
 	}
 
 	for _, d := range deploymentList.Items {
-		processDeployment(d, clientset, vpaClientset)
+		w := processDeployment(d, clientset, vpaClientset)
+		reporter.GenerateDeploymentReport(w)
 	}
 }
 
