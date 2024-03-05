@@ -4,7 +4,7 @@
 
 Skywoker is an extremely opinionated day-to-day tool I created while working within [@Skyscrapers](https://github.com/skyscrapers).
 
-It does a quick scan to your cluster, notes out the workloads (Currently supports `Deployments`, `Statefulsets` and `Cronjobs`), lists out the compliance within our [@Skyscrapers](https://github.com/skyscrapers) Well Architected Framework.
+It does a quick scan to your cluster, notes out the workloads (Currently supports `Deployments` only soon enough `Statefulsets` and `Cronjobs` will be there), lists out the compliance within our [@Skyscrapers](https://github.com/skyscrapers) Well Architected Framework.
 
 Main reason it exists, is to check whether or not a workload is compatible with [`Karpenter`](https://karpenter.sh)
 
