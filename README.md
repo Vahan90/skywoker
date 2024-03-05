@@ -28,3 +28,9 @@ Run a quick scan using
 ```bash
 ./bin/skywoker bp --namespace=<yournamespace, default is all> --workload-type=<all,deployment,statefulset,cronjob> -v(log verbosity boolean)
 ```
+
+An Example:
+
+![Demo](./pictures/demo.png)
+
+

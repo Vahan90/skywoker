@@ -61,6 +61,7 @@ func GenerateDeploymentReport(w workload.Workload) {
 	}
 
 	containerTbl.Print()
+	fmt.Println()
 	c.Println("Pod-specific checks")
 	fmt.Println()
 
@@ -77,6 +78,7 @@ func GenerateDeploymentReport(w workload.Workload) {
 		}
 	}
 	podTbl.Print()
+	fmt.Println()
 	c.Println("Deployment-specific checks")
 	fmt.Println()
 
